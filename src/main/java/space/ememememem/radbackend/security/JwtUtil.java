@@ -1,0 +1,70 @@
+package space.ememememem.radbackend.security;
+
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.stereotype.Component;
+import space.ememememem.radbackend.entity.User;
+import space.ememememem.radbackend.repository.UserRepository;
+
+import java.security.Key;
+import java.util.Date;
+
+@Component
+public class JwtUtil {
+
+    private final Key key =
+            Keys.hmacShaKeyFor("my-super-secret-key-my-super-secret-key".getBytes());
+    private final UserRepository userRepository;
+
+    public JwtUtil(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    public String generateToken(String username) {
+        long expiration = 1000 * 60 * 10;
+
+        return Jwts.builder()
+                .setSubject(username)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(key)
+                .compact();
+    }
+
+    public String generateRefreshToken(String username) {
+        long expiration = 1000L * 60 * 60 * 24 * 30;
+        String newRefreshToken = Jwts.builder()
+                                    .setSubject(username)
+                                    .setIssuedAt(new Date())
+                                    .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                                    .signWith(key)
+                                    .compact();
+        User user = userRepository.findByUsername(username).orElseThrow();
+        user.setRefreshToken(newRefreshToken);
+        userRepository.save(user);
+        return newRefreshToken;
+    }
+
+    public String extractUsername(String token) {
+        return getClaims(token).getSubject();
+    }
+
+    public boolean validateToken(String token) {
+
+        try {
+            getClaims(token);
+            return true;
+        } catch (JwtException e) {
+            return false;
+        }
+    }
+
+    private Claims getClaims(String token) {
+
+        return Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+}
