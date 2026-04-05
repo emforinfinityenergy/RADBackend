@@ -47,26 +47,27 @@ public class AuthServiceImpl implements AuthService {
         ).retrieve().toEntity(WechatAuthResponse.class).getBody();
 
         assert wechatAuthResponse != null;
-        if (wechatAuthResponse.getErrcode() == 40029) throw new LoginException(ErrorCode.AUTH_CODE_INVALID);
-        else if (wechatAuthResponse.getErrcode() == 40226) throw new LoginException(ErrorCode.RISK_CHECK_FAILED);
-        else if (wechatAuthResponse.getErrcode() != 0) throw new RuntimeException(wechatAuthResponse.getErrmsg());
+        if (wechatAuthResponse.getErrCode() == 40029) throw new LoginException(ErrorCode.AUTH_CODE_INVALID);
+        else if (wechatAuthResponse.getErrCode() == 40226) throw new LoginException(ErrorCode.RISK_CHECK_FAILED);
+        else if (wechatAuthResponse.getErrCode() != 0) throw new RuntimeException(wechatAuthResponse.getErrMsg());
 
 
-        User user = userRepository.findByOpenId(wechatAuthResponse.getOpenid())
+        User user = userRepository.findByOpenId(wechatAuthResponse.getOpenId())
                 .orElse(null);
 
         if (user == null) {
             user = User.builder()
-                    .username(wechatAuthResponse.getOpenid().substring(0, 11))
-                    .openId(wechatAuthResponse.getOpenid())
+                    .username(wechatAuthResponse.getOpenId().substring(0, 11))
+                    .openId(wechatAuthResponse.getOpenId())
                     .userRole(UserRole.USER)
                     .build();
         }
 
-        user.setSessionKey(wechatAuthResponse.getSession_key());
+        user.setSessionKey(wechatAuthResponse.getSessionKey());
 
-        String newAccessToken = jwtUtil.generateToken(user.getUsername(), user.getOpenId());
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getUsername(), user.getOpenId());
+        String newAccessToken = jwtUtil.generateToken(user.getUsername(), user.getOpenId(), user.getUserRole());
+        String newRefreshToken = jwtUtil.generateRefreshToken(user.getUsername(), user.getOpenId(),
+                user.getUserRole());
 
         user.setRefreshToken(newRefreshToken);
         userRepository.save(user);
@@ -82,10 +83,10 @@ public class AuthServiceImpl implements AuthService {
 
         if (!jwtUtil.validateToken(refreshToken)) throw new LoginException(ErrorCode.REFRESH_TOKEN_INVALID);
 
-        String newAccessToken = jwtUtil.generateToken(user.getUsername(), user.getOpenId());
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getUsername(), user.getOpenId());
+        String newAccessToken = jwtUtil.generateToken(user.getUsername(), user.getOpenId(), user.getUserRole());
+        String newRefreshToken = jwtUtil.generateRefreshToken(user.getUsername(), user.getOpenId(), user.getUserRole());
 
-        user.setRefreshToken(refreshToken);
+        user.setRefreshToken(newRefreshToken);
         userRepository.save(user);
 
         return new AuthTokenResponse(newAccessToken, newRefreshToken);
@@ -94,8 +95,8 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public UserInfoResponse userinfo(String authToken) {
         String token = authToken.substring(7);
-        String username = jwtUtil.extractUsername(token);
-        User user = userRepository.findByUsername(username).orElseThrow();
+        String openId = jwtUtil.extractOpenId(token);
+        User user = userRepository.findByUsername(openId).orElseThrow();
         return new UserInfoResponse(user.getUsername(), user.getId(), user.getUserRole());
     }
 }
