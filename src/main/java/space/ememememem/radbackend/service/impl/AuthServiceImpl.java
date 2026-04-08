@@ -16,9 +16,10 @@ import space.ememememem.radbackend.exception.LoginException;
 import space.ememememem.radbackend.repository.UserRepository;
 import space.ememememem.radbackend.security.JwtUtil;
 import space.ememememem.radbackend.service.AuthService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
-@Transactional(rollbackOn = Exception.class)
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
@@ -35,8 +36,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthTokenResponse login(LoginRequest req) {
-
-        WechatAuthResponse wechatAuthResponse = restClient.get().uri(
+        String responseBody = restClient.get().uri(
                 uriBuilder -> uriBuilder
                         .path("/sns/jscode2session")
                         .queryParam("appid", wechatAPIProperties.getAppId())
@@ -44,7 +44,15 @@ public class AuthServiceImpl implements AuthService {
                         .queryParam("js_code", req.getUserCode())
                         .queryParam("grant_type", "authorization_code")
                         .build()
-        ).retrieve().toEntity(WechatAuthResponse.class).getBody();
+        ).retrieve().body(String.class);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        WechatAuthResponse wechatAuthResponse;
+        try {
+            wechatAuthResponse = objectMapper.readValue(responseBody, WechatAuthResponse.class);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to parse WechatAuthResponse");
+        }
 
         assert wechatAuthResponse != null;
         if (wechatAuthResponse.getErrCode() == 40029) throw new LoginException(ErrorCode.AUTH_CODE_INVALID);
@@ -76,6 +84,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional(rollbackOn = Exception.class)
     public AuthTokenResponse refresh(RefreshRequest req) {
         String refreshToken = req.getRefreshToken();
         User user = userRepository.findByRefreshToken(refreshToken)
@@ -96,7 +105,7 @@ public class AuthServiceImpl implements AuthService {
     public UserInfoResponse userinfo(String authToken) {
         String token = authToken.substring(7);
         String openId = jwtUtil.extractOpenId(token);
-        User user = userRepository.findByUsername(openId).orElseThrow();
-        return new UserInfoResponse(user.getUsername(), user.getId(), user.getUserRole());
+        User user = userRepository.findByOpenId(openId).orElseThrow();
+        return new UserInfoResponse(user.getUsername(), user.getUserRole());
     }
 }
